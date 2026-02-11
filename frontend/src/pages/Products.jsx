@@ -1,5 +1,6 @@
 import { Search, ChevronRight, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import productBeigeTee from "@/assets/product-beige-tee.jpg";
@@ -139,7 +140,7 @@ const Products = () => {
             {/* Product Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {products.map((product, i) => (
-                <div key={i} className="group cursor-pointer">
+                <Link to={`/product/${i + 1}`} key={i} className="group cursor-pointer">
                   <div className="rounded-xl overflow-hidden mb-3 bg-secondary/30">
                     <img
                       src={product.image}
@@ -165,9 +166,9 @@ const Products = () => {
                       </div>
                       <p className="text-sm font-medium">{product.name}</p>
                     </div>
-                    <p className="text-sm font-bold">$ {product.price}</p>
+                    <p className="text-sm font-bold">₹ {product.price}</p>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
