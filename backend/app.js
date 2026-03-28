@@ -1,19 +1,41 @@
-import express from 'express'
-import dotenv from 'dotenv'
-import bodyParser from 'body-parser'
+import express from "express";
+import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import errorMiddlware from "./middlewares/errors.js";
 
-import productRoutes from './routes/productRoutes.js'
-import {connectDatabase} from './config/db.js'
-import Product from "./models/productModel.js"
+import productRoutes from "./routes/productRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import { connectDatabase } from "./config/db.js";
 
-const app = express();
-app.use(express.json()) 
 dotenv.config();
+const app = express();
 
-connectDatabase()
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+connectDatabase();
 
 app.use("/api/v1", productRoutes);
+app.use("/api/v1", userRoutes);
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000")
-})
+const PORT = process.env.PORT || 5000;
+// using error middleware
+app.use(errorMiddlware);
+
+const server = app.listen(PORT, () => {
+  console.log(
+    `Server is running at PORT : ${process.env.PORT} in ${process.env.NODE_ENV} mode`,
+  );
+});
+
+// Handling unhandled Promise rejections
+
+process.on("unhandledRejection", (err) => {
+  console.log(`Error : ${err}`);
+  console.log("Shutting down server due to Unhandled Promise Rejections");
+
+  server.close(() => {
+    process.exit(1);
+  });
+});
