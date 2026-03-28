@@ -2,7 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import errorMiddlware from "./middlewares/errors.js";
-
+import cors from "cors";
 import productRoutes from "./routes/productRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import { connectDatabase } from "./config/db.js";
