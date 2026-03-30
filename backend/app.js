@@ -9,7 +9,28 @@ import { connectDatabase } from "./config/db.js";
 
 dotenv.config();
 const app = express();
-app.use(cors());
+
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000"
+  // deployed frontend 
+];
+
+app.use(
+  cors((req, callback) => {
+    const origin = req.header("Origin");
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, {
+        origin: true,
+        credentials: true,
+      });
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
