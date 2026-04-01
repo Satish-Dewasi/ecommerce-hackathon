@@ -5,6 +5,7 @@ import errorMiddlware from "./middlewares/errors.js";
 import cors from "cors";
 import productRoutes from "./routes/productRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import sellerRoutes from "./routes/sellerRoutes.js";
 import { connectDatabase } from "./config/db.js";
 
 dotenv.config();
@@ -18,6 +19,7 @@ connectDatabase();
 
 app.use("/api/v1", productRoutes);
 app.use("/api/v1", userRoutes);
+app.use("/api/v1/seller", sellerRoutes);
 
 const PORT = process.env.PORT || 5000;
 // using error middleware
