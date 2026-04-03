@@ -34,6 +34,8 @@ export const registerController = catchAsyncErrors(async (req, res, next) => {
 //  Login User
 // ─────────────────────────────────────────
 export const loginController = catchAsyncErrors(async (req, res, next) => {
+  console.log("login attempt");
+
   const { email, password } = req.body;
 
   if (!email || !password) {

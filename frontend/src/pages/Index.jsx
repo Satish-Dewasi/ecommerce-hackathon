@@ -177,7 +177,7 @@ const Index = () => {
                     <p className="text-xs text-muted-foreground">{product.type}</p>
                     <p className="text-sm font-medium">{product.name}</p>
                   </div>
-                  <p className="text-sm font-bold">$ {product.price}</p>
+                  <p className="text-sm font-bold">₹ {product.price}</p>
                 </div>
               </div>
             ))}
