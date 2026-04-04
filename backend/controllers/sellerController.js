@@ -468,125 +468,97 @@ export const updateOrderStatus = async (req, res) => {
 export const getSalesInsights = async (req, res) => {
   try {
     const sellerId = new mongoose.Types.ObjectId(req.user._id);
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth(); // 0-indexed
 
-    // Date range filter — defaults to last 30 days
-    const to = req.query.to ? new Date(req.query.to) : new Date();
-    const from = req.query.from
-      ? new Date(req.query.from)
-      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // ── Year start → now ──────────────────────────────────
+    const yearStart = new Date(thisYear, 0, 1);
 
-    // ── Pipeline ──────────────────────────────────────────
-    const pipeline = [
-      // 1. Only orders in date range that involve this seller
+    // ── Monthly breakdown pipeline ────────────────────────
+    const monthlyPipeline = [
       {
         $match: {
           "sellerOrders.seller": sellerId,
-          createdAt: { $gte: from, $lte: to },
-          "sellerOrders.status": { $nin: ["cancelled", "returned"] }, // exclude dead orders
+          createdAt: { $gte: yearStart, $lte: now },
+          "sellerOrders.status": { $nin: ["cancelled", "returned"] },
         },
       },
-
-      // 2. Unwind sellerOrders to work on individual seller slices
       { $unwind: "$sellerOrders" },
-
-      // 3. Keep only this seller's slice
       {
         $match: {
           "sellerOrders.seller": sellerId,
           "sellerOrders.status": { $nin: ["cancelled", "returned"] },
         },
       },
-
-      // 4. Unwind items to aggregate per-product
       { $unwind: "$sellerOrders.items" },
-
-      // 5. Group into summary
       {
         $group: {
-          _id: null,
-          totalRevenue: { $sum: "$sellerOrders.items.itemTotal" },
-          totalUnitsSold: { $sum: "$sellerOrders.items.quantity" },
-          totalOrders: { $addToSet: "$_id" }, // unique order count
-
-          // Collect per-product data for top products breakdown
-          productSales: {
-            $push: {
-              productId: "$sellerOrders.items.product",
-              name: "$sellerOrders.items.variantSnapshot.sku",
-              units: "$sellerOrders.items.quantity",
-              revenue: "$sellerOrders.items.itemTotal",
-            },
-          },
+          _id: { month: { $month: "$createdAt" } }, // 1-indexed
+          revenue: { $sum: "$sellerOrders.items.itemTotal" },
+          orderIds: { $addToSet: "$_id" },
         },
       },
-
-      // 6. Shape the output
       {
         $project: {
           _id: 0,
-          totalRevenue: 1,
-          totalUnitsSold: 1,
-          totalOrders: { $size: "$totalOrders" },
-          productSales: 1,
+          month: "$_id.month",
+          revenue: 1,
+          totalOrders: { $size: "$orderIds" },
         },
       },
+      { $sort: { month: 1 } },
     ];
 
-    const [result] = await Order.aggregate(pipeline);
+    const monthlyData = await Order.aggregate(monthlyPipeline);
 
-    if (!result) {
-      return res.status(200).json({
-        success: true,
-        period: { from, to },
-        summary: {
-          totalRevenue: 0,
-          totalUnitsSold: 0,
-          totalOrders: 0,
-          topProducts: [],
-        },
-      });
-    }
+    // ── Build 12-month array (fill missing months with 0) ──
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const found = monthlyData.find((d) => d.month === i + 1);
+      return {
+        month: i + 1,
+        label: new Date(thisYear, i, 1).toLocaleString("en-IN", {
+          month: "short",
+        }),
+        revenue: found?.revenue || 0,
+        totalOrders: found?.totalOrders || 0,
+      };
+    });
 
-    // ── Top 5 Products by revenue ──────────────────────────
-    const productMap = {};
-    for (const entry of result.productSales) {
-      const key = entry.productId.toString();
-      if (!productMap[key]) {
-        productMap[key] = { productId: key, unitsSold: 0, revenue: 0 };
-      }
-      productMap[key].unitsSold += entry.units;
-      productMap[key].revenue += entry.revenue;
-    }
+    // ── Derive summary values ──────────────────────────────
+    const thisMonthData = months[thisMonth];
+    const lastMonthData = months[thisMonth - 1] || {
+      revenue: 0,
+      totalOrders: 0,
+    };
 
-    const topProducts = Object.values(productMap)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
+    const thisMonthRevenue = thisMonthData.revenue;
+    const lastMonthRevenue = lastMonthData.revenue;
 
-    // Populate product names
-    const productIds = topProducts.map(
-      (p) => new mongoose.Types.ObjectId(p.productId),
-    );
-    const products = await Product.find({ _id: { $in: productIds } })
-      .select("name")
-      .lean();
-    const productNames = Object.fromEntries(
-      products.map((p) => [p._id.toString(), p.name]),
-    );
+    const monthChange =
+      lastMonthRevenue > 0
+        ? (
+            ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) *
+            100
+          ).toFixed(1)
+        : null; // null = no previous data to compare
 
-    const topProductsNamed = topProducts.map((p) => ({
-      ...p,
-      name: productNames[p.productId] || "Unknown",
-    }));
+    const totalYearRevenue = months.reduce((s, m) => s + m.revenue, 0);
+    const totalYearOrders = months.reduce((s, m) => s + m.totalOrders, 0);
+    const avgOrderValue =
+      totalYearOrders > 0 ? Math.round(totalYearRevenue / totalYearOrders) : 0;
 
     res.status(200).json({
       success: true,
-      period: { from, to },
       summary: {
-        totalRevenue: result.totalRevenue,
-        totalUnitsSold: result.totalUnitsSold,
-        totalOrders: result.totalOrders,
-        topProducts: topProductsNamed,
+        thisMonthRevenue,
+        lastMonthRevenue,
+        monthChangePercent: monthChange, // e.g. "12.5" or "-8.3" or null
+        totalYearRevenue,
+        totalYearOrders,
+        avgOrderValue,
       },
+      monthlyBreakdown: months, // array of 12 months with revenue + orders
     });
   } catch (error) {
     res.status(500).json({

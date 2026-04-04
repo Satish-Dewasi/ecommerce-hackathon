@@ -63,11 +63,11 @@ router
 // GET   /seller/orders/:orderId              → get one order (my slice only)
 // PATCH /seller/orders/:orderId/status       → update fulfillment status
 
-router.route("/orders").get(getMyOrders);
+router.route("/seller/orders").get(getMyOrders);
 
-router.route("/orders/:orderId").get(getMyOrderById);
+router.route("/seller/orders/:orderId").get(getMyOrderById);
 
-router.patch("/orders/:orderId/status", updateOrderStatus);
+router.patch("/seller/orders/:orderId/status", updateOrderStatus);
 
 // ═══════════════════════════════════════════════════════════
 //  INSIGHTS ROUTES

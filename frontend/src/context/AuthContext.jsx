@@ -28,8 +28,8 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const register = useCallback(async ({ name, email, password, phone }) => {
-    await authApi.register({ name, email, password, phone });
+  const register = useCallback(async ({ name, email, password, phone, role }) => {
+    await authApi.register({ name, email, password, phone, role });
     // Registration doesn't auto-login per the API docs — just succeeds
   }, []);
 

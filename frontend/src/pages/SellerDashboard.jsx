@@ -22,6 +22,7 @@ import {
   Truck,
   XCircle,
   RotateCcw,
+  Pencil,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { sellerApi } from "@/lib/api";
@@ -140,10 +141,14 @@ const MiniBarChart = ({ data }) => {
 };
 
 // ─── Status Dropdown ──────────────────────────────────────────────────────────
-const StatusDropdown = ({ orderId, currentStatus, onUpdate }) => {
+const StatusDropdown = ({
+  orderId,
+  sellerOrderId,
+  currentStatus,
+  onUpdate,
+}) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const handleSelect = async (newStatus) => {
     if (newStatus === currentStatus) {
       setOpen(false);
@@ -251,6 +256,7 @@ const OrderRow = ({ order, onStatusUpdate }) => {
         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
           <StatusDropdown
             orderId={order._id}
+            sellerOrderId={so._id} // ← pass sellerOrder _id too
             currentStatus={so.status}
             onUpdate={onStatusUpdate}
           />
@@ -391,7 +397,8 @@ const OrdersTab = () => {
         limit: 10,
         ...(statusFilter && { status: statusFilter }),
       };
-      const data = await sellerApi.getOrders(params);
+      const data = await sellerApi.getMyOrders(params);
+
       setOrders(data.orders || []);
       setTotalPages(data.pages || 1);
       setTotal(data.total || 0);
@@ -713,7 +720,7 @@ const SellerDashboard = () => {
                     />
                   </button>
                   <Link
-                    to="/products"
+                    to="/seller/add-product"
                     className="flex items-center gap-2 bg-foreground text-background px-4 py-2 rounded-lg text-sm font-bold hover:opacity-90 transition-opacity"
                   >
                     <Plus className="w-4 h-4" /> Add Product
@@ -786,15 +793,25 @@ const SellerDashboard = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {products.map((p) => (
-                    <Link
-                      to={`/product/${p._id}`}
+                    <div
                       key={p._id}
-                      className="group border border-foreground/10 rounded-2xl overflow-hidden hover:border-foreground/30 transition-colors"
+                      className="group relative border border-foreground/10 rounded-2xl overflow-hidden hover:border-foreground/30 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/product/${p._id}`)} // ← card click navigates
                     >
-                      <div className="bg-secondary/20 h-40 overflow-hidden">
-                        {p.images?.[0]?.url ? (
+                      <div className="bg-secondary/20 h-40 overflow-hidden relative">
+                        {/* Edit button */}
+                        <Link
+                          to={`/seller/edit-product/${p._id}`}
+                          className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 hover:bg-background border border-foreground/10 rounded-lg p-2 shadow-sm z-10"
+                          title="Edit product"
+                          onClick={(e) => e.stopPropagation()} // ← prevents card click
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Link>
+
+                        {p.variants[0]?.images?.[0]?.url ? (
                           <img
-                            src={p.images[0].url}
+                            src={p.variants[0].images[0].url}
                             alt={p.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             onError={(e) => {
@@ -838,7 +855,7 @@ const SellerDashboard = () => {
                           </span>
                         </div>
                       </div>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               )}
@@ -849,105 +866,149 @@ const SellerDashboard = () => {
           {activeTab === "orders" && <OrdersTab />}
 
           {/* ── SALES TAB ────────────────────────────────────────────────── */}
-          {activeTab === "sales" && (
-            <div>
-              <h1
-                className="text-3xl font-black uppercase mb-2"
-                style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-              >
-                Monthly Sales
-              </h1>
-              <p className="text-sm text-muted-foreground mb-8">
-                {new Date().getFullYear()} overview — simulated data until
-                orders API is available.
-              </p>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-                <StatCard
-                  label="This Month"
-                  value={`₹${(thisMonthSales / 1000).toFixed(1)}k`}
-                  sub={`${salesTrend === "up" ? "+" : "-"}${salesDiff}% vs last month`}
-                  trend={salesTrend}
-                />
-                <StatCard
-                  label="Total Revenue"
-                  value={`₹${(totalSales / 1000).toFixed(0)}k`}
-                  sub="Year to date"
-                />
-                <StatCard
-                  label="Total Orders"
-                  value={totalOrders}
-                  sub="All months"
-                />
-                <StatCard
-                  label="Avg Order Value"
-                  value={
-                    totalOrders > 0
-                      ? `₹${Math.round(totalSales / totalOrders)}`
-                      : "—"
-                  }
-                  sub="Per order"
-                />
-              </div>
-
-              <div className="border border-foreground/10 rounded-2xl p-6 mb-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4" /> Revenue by Month
-                  </h2>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date().getFullYear()}
-                  </span>
-                </div>
-                <MiniBarChart data={salesData} />
-              </div>
-
-              <div className="border border-foreground/10 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-foreground/10 bg-secondary/20">
-                      {["Month", "Orders", "Revenue", "Avg/Order"].map(
-                        (h, i) => (
-                          <th
-                            key={h}
-                            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground ${i === 0 ? "text-left" : "text-right"}`}
-                          >
-                            {h}
-                          </th>
-                        ),
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesData
-                      .filter((d) => d.value > 0)
-                      .map((d, i) => (
-                        <tr
-                          key={i}
-                          className="border-b border-foreground/5 hover:bg-secondary/20 transition-colors"
-                        >
-                          <td className="px-4 py-3 font-medium">{d.label}</td>
-                          <td className="px-4 py-3 text-right text-muted-foreground">
-                            {d.orders}
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold">
-                            ₹{d.value.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3 text-right text-muted-foreground">
-                            ₹
-                            {d.orders > 0
-                              ? Math.round(d.value / d.orders).toLocaleString()
-                              : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {activeTab === "sales" && <SalesTab />}
         </div>
       </main>
+    </div>
+  );
+};
+
+// ─── Sales Tab ─────────────────────────────────────────────────────────────────
+const SalesTab = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    sellerApi
+      .getSalesInsights()
+      .then((res) => setData(res))
+      .catch((err) => setError(err.message || "Failed to load insights"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+
+  if (error)
+    return (
+      <div className="flex items-center gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-600 text-sm rounded-lg px-4 py-3">
+        <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+      </div>
+    );
+
+  const { summary, monthlyBreakdown } = data;
+  const trendUp = parseFloat(summary.monthChangePercent) >= 0;
+
+  return (
+    <div>
+      <h1
+        className="text-3xl font-black uppercase mb-2"
+        style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+      >
+        Sales Insights
+      </h1>
+      <p className="text-sm text-muted-foreground mb-8">
+        {new Date().getFullYear()} · Year to date
+      </p>
+
+      {/* ── Stat cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <StatCard
+          label="This Month"
+          value={`₹${(summary.thisMonthRevenue / 1000).toFixed(1)}k`}
+          sub={
+            summary.monthChangePercent !== null
+              ? `${trendUp ? "+" : ""}${summary.monthChangePercent}% vs last month`
+              : "No previous data"
+          }
+          trend={
+            summary.monthChangePercent === null ? null : trendUp ? "up" : "down"
+          }
+        />
+        <StatCard
+          label="Year Revenue"
+          value={`₹${(summary.totalYearRevenue / 1000).toFixed(1)}k`}
+          sub="Jan → now"
+        />
+        <StatCard
+          label="Total Orders"
+          value={summary.totalYearOrders}
+          sub="Year to date"
+        />
+        <StatCard
+          label="Avg Order Value"
+          value={
+            summary.avgOrderValue > 0
+              ? `₹${summary.avgOrderValue.toLocaleString()}`
+              : "—"
+          }
+          sub="Per order"
+        />
+      </div>
+
+      {/* ── Revenue by month chart ── */}
+      <div className="border border-foreground/10 rounded-2xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-sm font-black uppercase tracking-wider flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" /> Revenue by Month
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            {new Date().getFullYear()}
+          </span>
+        </div>
+        <MiniBarChart
+          data={monthlyBreakdown.map((m) => ({
+            label: m.label,
+            value: m.revenue,
+          }))}
+        />
+      </div>
+
+      {/* ── Monthly table ── */}
+      <div className="border border-foreground/10 rounded-2xl overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-foreground/10 bg-secondary/20">
+              {["Month", "Orders", "Revenue", "Avg / Order"].map((h, i) => (
+                <th
+                  key={h}
+                  className={`px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground ${i === 0 ? "text-left" : "text-right"}`}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {monthlyBreakdown
+              .filter((m) => m.revenue > 0)
+              .map((m) => (
+                <tr
+                  key={m.month}
+                  className="border-b border-foreground/5 hover:bg-secondary/20 transition-colors"
+                >
+                  <td className="px-4 py-3 font-medium">{m.label}</td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">
+                    {m.totalOrders}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold">
+                    ₹{m.revenue.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-right text-muted-foreground">
+                    {m.totalOrders > 0
+                      ? `₹${Math.round(m.revenue / m.totalOrders).toLocaleString()}`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

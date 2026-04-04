@@ -13,7 +13,10 @@ import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import Auth from "./pages/Auth";
 import AdminDashboard from "./pages/AdminDashboard";
+import Orders from "./pages/Orders";
 import SellerDashboard from "./pages/SellerDashboard";
+import AddProduct from "./pages/AddProduct";
+import EditProduct from "./pages/EditProduct";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +37,7 @@ const App = () => (
               <Route path="/cart"        element={<Cart />}          />
               <Route path="/checkout"    element={<Checkout />}      />
               <Route path="/auth"        element={<Auth />}          />
+              <Route path="/orders"      element={<ProtectedRoute><Orders /></ProtectedRoute>} />
 
               {/* Role-protected dashboards */}
               <Route path="/admin" element={
@@ -44,6 +48,16 @@ const App = () => (
               <Route path="/seller" element={
                 <ProtectedRoute role="seller">
                   <SellerDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/seller/add-product" element={
+                <ProtectedRoute role="seller">
+                  <AddProduct />
+                </ProtectedRoute>
+              } />
+              <Route path="/seller/edit-product/:id" element={
+                <ProtectedRoute role="seller">
+                  <EditProduct />
                 </ProtectedRoute>
               } />
 

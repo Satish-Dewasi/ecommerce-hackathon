@@ -589,14 +589,6 @@ const AdminDashboard = () => {
               </div>
 
               {/* Note about role change API */}
-              <p className="text-xs text-muted-foreground mt-4">
-                ⚠️ Role changes are reflected locally. Ask your backend teammate
-                to add{" "}
-                <code className="bg-secondary/60 px-1 rounded">
-                  PUT /api/v1/user/admin/users/:id/role
-                </code>{" "}
-                to persist them.
-              </p>
             </div>
           )}
         </div>
