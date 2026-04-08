@@ -2,8 +2,6 @@ import Redis from "ioredis";
 import logger from "./logger.js";
 import "dotenv/config";
 
-console.log("REDIS_URL:", process.env.REDIS_URL);
-
 const redis = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: 1,
   retryStrategy: (times) => {
