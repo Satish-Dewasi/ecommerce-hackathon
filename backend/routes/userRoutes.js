@@ -29,44 +29,33 @@ import {
   deleteUserController,
 } from "../controllers/userController.js";
 import { isAuthenticated, authorizeRoles } from "../middlewares/auth.js";
+import { authLimiter } from "../middlewares/rateLimiter.js";
 
 const router = express.Router();
 
-// ─────────────────────────────────────────
 //  Auth Routes (Public)
-// ─────────────────────────────────────────
-router.route("/register").post(registerController);
-router.route("/login").post(loginController);
+router.route("/register").post(authLimiter, registerController);
+router.route("/login").post(authLimiter, loginController);
 router.route("/refresh-token").post(refreshTokenEndpoint);
 
-// ─────────────────────────────────────────
 //  Auth Routes (Protected)
-// ─────────────────────────────────────────
 router.route("/logout").post(isAuthenticated, logoutController);
 
-// ─────────────────────────────────────────
 //  Profile Routes (Protected)
-// ─────────────────────────────────────────
 router.route("/me").get(isAuthenticated, userProfile);
 router.route("/me/update").put(isAuthenticated, updateProfileController);
 
-// ─────────────────────────────────────────
 //  Address Routes (Protected)
-// ─────────────────────────────────────────
 router.route("/me/address").post(isAuthenticated, addAddressController);
 router
   .route("/me/address/:addressId")
   .put(isAuthenticated, updateAddressController)
   .delete(isAuthenticated, deleteAddressController);
 
-// ─────────────────────────────────────────
 //  Wishlist Routes (Protected)
-// ─────────────────────────────────────────
 router.route("/me/wishlist").post(isAuthenticated, toggleWishlistController);
 
-// ─────────────────────────────────────────
 //  Cart Routes (Protected)
-// ─────────────────────────────────────────
 router
   .route("/me/cart")
   .post(isAuthenticated, addToCartController)
@@ -76,9 +65,7 @@ router
   .route("/me/cart/:itemId")
   .delete(isAuthenticated, removeFromCartController);
 
-// ─────────────────────────────────────────
 //  Admin Routes (Protected + Admin Only)
-// ─────────────────────────────────────────
 router
   .route("/admin/users")
   .get(isAuthenticated, authorizeRoles("admin"), getAllUserController);

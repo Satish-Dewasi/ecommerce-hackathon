@@ -4,6 +4,7 @@ import ErrorHandler from "../utils/ErrorHandler.js";
 import { generateAccessAndRefreshToken } from "../utils/generateAccessAndRefreshToken.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import logger from "../utils/logger.js";
 
 // ─────────────────────────────────────────
 //  Register User
@@ -21,9 +22,10 @@ export const registerController = catchAsyncErrors(async (req, res, next) => {
     name,
     email,
     password,
-    phone: phone || undefined, // undefined so sparse unique index is not triggered
+    phone: phone || undefined,
   });
 
+  logger.logEvent("info", "User registered", { userId: user._id });
   res.status(201).json({
     success: true,
     message: "User registered successfully",
@@ -37,6 +39,7 @@ export const loginController = catchAsyncErrors(async (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
+    logger.logEvent("warn", "Login failed — invalid credentials", { email });
     return next(new ErrorHandler("Please enter email & password", 400));
   }
 
@@ -44,11 +47,14 @@ export const loginController = catchAsyncErrors(async (req, res, next) => {
   const user = await User.findOne({ email }).select("+password");
 
   if (!user) {
+    logger.logEvent("warn", "Login failed — user not found", { email });
     return next(new ErrorHandler("User not found with this email", 404));
   }
 
   // Block banned users from logging in
   if (user.isBanned) {
+    logger.logEvent("warn", "Login failed — account banned", { email });
+
     return next(
       new ErrorHandler(
         `Account banned: ${user.banReason || "Contact support"}`,
@@ -59,23 +65,15 @@ export const loginController = catchAsyncErrors(async (req, res, next) => {
 
   // Block deactivated accounts
   if (!user.isActive) {
+    logger.logEvent("warn", "Login failed — account deactivated", { email });
     return next(
       new ErrorHandler("Account is deactivated. Contact support.", 403),
     );
   }
 
-  // Google OAuth users may not have a password
-  if (!user.password) {
-    return next(
-      new ErrorHandler(
-        "This account uses Google login. Please sign in with Google.",
-        400,
-      ),
-    );
-  }
-
   const isPasswordMatched = await user.comparePassword(password);
   if (!isPasswordMatched) {
+    logger.logEvent("warn", "Login failed — incorrect password", { email });
     return next(new ErrorHandler("Invalid email or password", 401));
   }
 
@@ -94,6 +92,11 @@ export const loginController = catchAsyncErrors(async (req, res, next) => {
     secure: true,
     sameSite: "None",
   };
+
+  logger.logEvent("info", "User logged in", {
+    userId: user._id,
+    role: user.role,
+  });
 
   res.status(200).cookie("refreshToken", refreshToken, cookieOptions).json({
     success: true,
@@ -114,6 +117,7 @@ export const logoutController = catchAsyncErrors(async (req, res, next) => {
     httpOnly: true,
   });
 
+  logger.logEvent("info", "User logged out", { userId: req.user._id });
   res.status(200).json({
     success: true,
     message: "Logged out successfully",
@@ -158,6 +162,9 @@ export const updateProfileController = catchAsyncErrors(
       { new: true, runValidators: true },
     );
 
+    logger.logEvent("info", "User profile updated", {
+      userId: updatedUser._id,
+    });
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
