@@ -18,12 +18,9 @@ const addressSchema = new mongoose.Schema({
   isDefault: { type: Boolean, default: false },
 });
 
-// ─────────────────────────────────────────
 //  Main User Schema
-// ─────────────────────────────────────────
 const userSchema = new mongoose.Schema(
   {
-    // ── 1. Basic Info ──────────────────────
     name: {
       type: String,
       required: [true, "Please enter your name"],
@@ -41,13 +38,12 @@ const userSchema = new mongoose.Schema(
     dateOfBirth: { type: Date },
     gender: { type: String, enum: ["male", "female", "other", "prefer_not"] },
 
-    // ── 2. Authentication ──────────────────
     password: {
       type: String,
       minLength: [6, "Password must have at least 6 characters"],
-      select: false, // never returned in queries by default
+      select: false,
     },
-    googleId: { type: String }, // populated when user signs in via Google OAuth
+    googleId: { type: String },
 
     isEmailVerified: { type: Boolean, default: false },
     isPhoneVerified: { type: Boolean, default: false },
@@ -63,14 +59,12 @@ const userSchema = new mongoose.Schema(
     // JWT refresh token
     refreshToken: { type: String },
 
-    // ── 3. Role & Permissions ──────────────
     role: {
       type: String,
       enum: ["customer", "seller", "admin"],
       default: "customer",
     },
 
-    // ── 4. Account Status ──────────────────
     isActive: { type: Boolean, default: true },
     isBanned: { type: Boolean, default: false },
     banReason: { type: String },
@@ -79,10 +73,8 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: { type: Date },
     lastLoginIp: { type: String },
 
-    // ── 5. Addresses ──────────────────────
     addresses: [addressSchema], // user can save multiple addresses
 
-    // ── 6. Wishlist ───────────────────────
     wishlist: [
       {
         product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
@@ -90,9 +82,6 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // ── 7. Cart ───────────────────────────
-    // For small-medium scale: embedded here
-    // For large scale: move to separate Cart collection
     cart: [
       {
         product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
@@ -102,7 +91,6 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
-    // ── 9. Seller Profile ─────────────────
     // Only populated when role === "seller"
     sellerProfile: {
       storeName: { type: String },
@@ -115,7 +103,6 @@ const userSchema = new mongoose.Schema(
       totalSales: { type: Number, default: 0 },
     },
 
-    // ── 10. Preferences ───────────────────
     preferences: {
       currency: { type: String, default: "INR" },
       language: { type: String, default: "en" },
@@ -132,9 +119,6 @@ const userSchema = new mongoose.Schema(
   { timestamps: true, validateBeforeSave: false }, // auto createdAt + updatedAt
 );
 
-// ─────────────────────────────────────────
-//  Pre-save Hook — Hash Password
-// ─────────────────────────────────────────
 userSchema.pre("save", async function () {
   // only hash if password field was modified (or is new)
   if (!this.isModified("password")) return;
@@ -144,10 +128,6 @@ userSchema.pre("save", async function () {
     this.password = await bcrypt.hash(this.password, 10);
   }
 });
-
-// ─────────────────────────────────────────
-//  Instance Methods
-// ─────────────────────────────────────────
 
 // Compare entered password with hashed password in DB
 userSchema.methods.comparePassword = async function (enteredPassword) {
@@ -170,9 +150,6 @@ userSchema.methods.generateRefreshToken = function () {
   });
 };
 
-// ─────────────────────────────────────────
-//  Virtual — Full Default Address
-// ─────────────────────────────────────────
 userSchema.virtual("defaultAddress").get(function () {
   return (
     this.addresses?.find((addr) => addr.isDefault) ||

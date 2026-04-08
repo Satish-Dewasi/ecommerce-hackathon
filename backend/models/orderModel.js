@@ -153,7 +153,6 @@ const orderSchema = new mongoose.Schema(
     },
 
     // Overall order-level status (derived from sellerOrders statuses)
-    // Useful for customer-facing order tracking
     overallStatus: {
       type: String,
       enum: [
@@ -168,14 +167,13 @@ const orderSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // Soft delete / archival
     isDeleted: {
       type: Boolean,
       default: false,
     },
   },
   {
-    timestamps: true, // createdAt = order placed time
+    timestamps: true,
   },
 );
 
@@ -184,8 +182,6 @@ orderSchema.index({ "sellerOrders.seller": 1 }); // fast seller order lookup
 orderSchema.index({ createdAt: -1 }); // latest orders first
 orderSchema.index({ overallStatus: 1 });
 
-// ─── Instance Method: Recalculate overallStatus ───────────────────────────────
-// Call this after updating any sellerOrder status to keep overallStatus in sync
 orderSchema.methods.syncOverallStatus = function () {
   const statuses = this.sellerOrders.map((so) => so.status);
   const unique = [...new Set(statuses)];

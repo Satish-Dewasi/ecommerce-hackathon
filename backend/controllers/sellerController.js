@@ -1,10 +1,7 @@
 import Product from "../models/productModel.js";
 import Order from "../models/orderModel.js";
 import mongoose from "mongoose";
-
-// ═══════════════════════════════════════════════════════════
-//  HELPER
-// ═══════════════════════════════════════════════════════════
+import { invalidateCache } from "../utils/cache.js";
 
 // Confirm a product belongs to the requesting seller
 const assertOwnership = async (productId, sellerId) => {
@@ -17,11 +14,7 @@ const assertOwnership = async (productId, sellerId) => {
   return product;
 };
 
-// ═══════════════════════════════════════════════════════════
-//  PRODUCT MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
-// ── GET /seller/products ─────────────────────────────────
+// GET /seller/products
 // List all products owned by the logged-in seller
 export const getMyProducts = async (req, res) => {
   try {
@@ -68,7 +61,7 @@ export const getMyProducts = async (req, res) => {
   }
 };
 
-// ── GET /seller/products/:productId ─────────────────────
+// GET /seller/products/:productId
 // Get a single product — must be seller's own
 export const getMyProductById = async (req, res) => {
   try {
@@ -89,7 +82,7 @@ export const getMyProductById = async (req, res) => {
   }
 };
 
-// ── POST /seller/products ────────────────────────────────
+// POST /seller/products
 // Create a new product — seller is stamped from JWT
 export const createProduct = async (req, res) => {
   try {
@@ -119,9 +112,8 @@ export const createProduct = async (req, res) => {
   }
 };
 
-// ── PATCH /seller/products/:productId ───────────────────
+// PATCH /seller/products/:productId
 // Update top-level product fields (name, description, category, etc.)
-// Does NOT touch variants — use dedicated variant routes for that
 export const updateProduct = async (req, res) => {
   try {
     const product = await assertOwnership(req.params.productId, req.user._id);
@@ -138,6 +130,8 @@ export const updateProduct = async (req, res) => {
     Object.assign(product, safeUpdates);
     await product.save();
 
+    await invalidateCache(`products:${id}`, "products:all");
+
     res.status(200).json({
       success: true,
       message: "Product updated successfully",
@@ -152,8 +146,7 @@ export const updateProduct = async (req, res) => {
   }
 };
 
-// ── DELETE /seller/products/:productId ──────────────────
-// Soft delete — sets isDeleted: true
+//  DELETE /seller/products/:productId
 export const deleteProduct = async (req, res) => {
   try {
     const product = await assertOwnership(req.params.productId, req.user._id);
@@ -179,12 +172,7 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
-//  VARIANT MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
-// ── POST /seller/products/:productId/variants ────────────
-// Add a new variant to an existing product
+//  POST /seller/products/:productId/variants
 export const addVariant = async (req, res) => {
   try {
     const product = await assertOwnership(req.params.productId, req.user._id);
@@ -218,7 +206,7 @@ export const addVariant = async (req, res) => {
   }
 };
 
-// ── PATCH /seller/products/:productId/variants/:sku ─────
+//  PATCH /seller/products/:productId/variants/:sku
 // Update a specific variant (price, stock, color, size)
 export const updateVariant = async (req, res) => {
   try {
@@ -256,7 +244,7 @@ export const updateVariant = async (req, res) => {
   }
 };
 
-// ── DELETE /seller/products/:productId/variants/:sku ────
+//  DELETE /seller/products/:productId/variants/:sku
 // Remove a variant from a product
 export const deleteVariant = async (req, res) => {
   try {
@@ -292,13 +280,8 @@ export const deleteVariant = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
-//  ORDER MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
 // ── GET /seller/orders ───────────────────────────────────
 // List all orders that contain this seller's products
-// Filters down to only the seller's own sellerOrder slice
 export const getMyOrders = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
@@ -349,8 +332,8 @@ export const getMyOrders = async (req, res) => {
   }
 };
 
-// ── GET /seller/orders/:orderId ──────────────────────────
-// Get full detail of one order — only the seller's sellerOrder slice
+//  GET /seller/orders/:orderId
+// Get full detail of one order
 export const getMyOrderById = async (req, res) => {
   try {
     const sellerId = req.user._id;
@@ -393,10 +376,7 @@ export const getMyOrderById = async (req, res) => {
   }
 };
 
-// ── PATCH /seller/orders/:orderId/status ─────────────────
-// Update fulfillment status on this seller's sellerOrder slice
-// Valid transitions: pending → confirmed → shipped → delivered
-//                   any     → cancelled / returned
+//  PATCH /seller/orders/:orderId/status
 export const updateOrderStatus = async (req, res) => {
   try {
     const { status, note, trackingInfo } = req.body;
@@ -458,135 +438,101 @@ export const updateOrderStatus = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
-//  SALES INSIGHTS
-// ═══════════════════════════════════════════════════════════
-
 // ── GET /seller/insights ─────────────────────────────────
-// Sales summary: revenue, units sold, order count, top products
-// Optional query params: from, to (ISO date strings)
 export const getSalesInsights = async (req, res) => {
   try {
     const sellerId = new mongoose.Types.ObjectId(req.user._id);
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth(); // 0-indexed
 
-    // Date range filter — defaults to last 30 days
-    const to = req.query.to ? new Date(req.query.to) : new Date();
-    const from = req.query.from
-      ? new Date(req.query.from)
-      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // ── Year start → now ──────────────────────────────────
+    const yearStart = new Date(thisYear, 0, 1);
 
-    // ── Pipeline ──────────────────────────────────────────
-    const pipeline = [
-      // 1. Only orders in date range that involve this seller
+    // ── Monthly breakdown pipeline ────────────────────────
+    const monthlyPipeline = [
       {
         $match: {
           "sellerOrders.seller": sellerId,
-          createdAt: { $gte: from, $lte: to },
-          "sellerOrders.status": { $nin: ["cancelled", "returned"] }, // exclude dead orders
+          createdAt: { $gte: yearStart, $lte: now },
+          "sellerOrders.status": { $nin: ["cancelled", "returned"] },
         },
       },
-
-      // 2. Unwind sellerOrders to work on individual seller slices
       { $unwind: "$sellerOrders" },
-
-      // 3. Keep only this seller's slice
       {
         $match: {
           "sellerOrders.seller": sellerId,
           "sellerOrders.status": { $nin: ["cancelled", "returned"] },
         },
       },
-
-      // 4. Unwind items to aggregate per-product
       { $unwind: "$sellerOrders.items" },
-
-      // 5. Group into summary
       {
         $group: {
-          _id: null,
-          totalRevenue: { $sum: "$sellerOrders.items.itemTotal" },
-          totalUnitsSold: { $sum: "$sellerOrders.items.quantity" },
-          totalOrders: { $addToSet: "$_id" }, // unique order count
-
-          // Collect per-product data for top products breakdown
-          productSales: {
-            $push: {
-              productId: "$sellerOrders.items.product",
-              name: "$sellerOrders.items.variantSnapshot.sku",
-              units: "$sellerOrders.items.quantity",
-              revenue: "$sellerOrders.items.itemTotal",
-            },
-          },
+          _id: { month: { $month: "$createdAt" } }, // 1-indexed
+          revenue: { $sum: "$sellerOrders.items.itemTotal" },
+          orderIds: { $addToSet: "$_id" },
         },
       },
-
-      // 6. Shape the output
       {
         $project: {
           _id: 0,
-          totalRevenue: 1,
-          totalUnitsSold: 1,
-          totalOrders: { $size: "$totalOrders" },
-          productSales: 1,
+          month: "$_id.month",
+          revenue: 1,
+          totalOrders: { $size: "$orderIds" },
         },
       },
+      { $sort: { month: 1 } },
     ];
 
-    const [result] = await Order.aggregate(pipeline);
+    const monthlyData = await Order.aggregate(monthlyPipeline);
 
-    if (!result) {
-      return res.status(200).json({
-        success: true,
-        period: { from, to },
-        summary: {
-          totalRevenue: 0,
-          totalUnitsSold: 0,
-          totalOrders: 0,
-          topProducts: [],
-        },
-      });
-    }
+    // ── Build 12-month array (fill missing months with 0) ──
+    const months = Array.from({ length: 12 }, (_, i) => {
+      const found = monthlyData.find((d) => d.month === i + 1);
+      return {
+        month: i + 1,
+        label: new Date(thisYear, i, 1).toLocaleString("en-IN", {
+          month: "short",
+        }),
+        revenue: found?.revenue || 0,
+        totalOrders: found?.totalOrders || 0,
+      };
+    });
 
-    // ── Top 5 Products by revenue ──────────────────────────
-    const productMap = {};
-    for (const entry of result.productSales) {
-      const key = entry.productId.toString();
-      if (!productMap[key]) {
-        productMap[key] = { productId: key, unitsSold: 0, revenue: 0 };
-      }
-      productMap[key].unitsSold += entry.units;
-      productMap[key].revenue += entry.revenue;
-    }
+    // ── Derive summary values ──────────────────────────────
+    const thisMonthData = months[thisMonth];
+    const lastMonthData = months[thisMonth - 1] || {
+      revenue: 0,
+      totalOrders: 0,
+    };
 
-    const topProducts = Object.values(productMap)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
+    const thisMonthRevenue = thisMonthData.revenue;
+    const lastMonthRevenue = lastMonthData.revenue;
 
-    // Populate product names
-    const productIds = topProducts.map(
-      (p) => new mongoose.Types.ObjectId(p.productId),
-    );
-    const products = await Product.find({ _id: { $in: productIds } })
-      .select("name")
-      .lean();
-    const productNames = Object.fromEntries(
-      products.map((p) => [p._id.toString(), p.name]),
-    );
+    const monthChange =
+      lastMonthRevenue > 0
+        ? (
+            ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) *
+            100
+          ).toFixed(1)
+        : null; // null = no previous data to compare
 
-    const topProductsNamed = topProducts.map((p) => ({
-      ...p,
-      name: productNames[p.productId] || "Unknown",
-    }));
+    const totalYearRevenue = months.reduce((s, m) => s + m.revenue, 0);
+    const totalYearOrders = months.reduce((s, m) => s + m.totalOrders, 0);
+    const avgOrderValue =
+      totalYearOrders > 0 ? Math.round(totalYearRevenue / totalYearOrders) : 0;
 
     res.status(200).json({
       success: true,
-      period: { from, to },
       summary: {
-        totalRevenue: result.totalRevenue,
-        totalUnitsSold: result.totalUnitsSold,
-        totalOrders: result.totalOrders,
-        topProducts: topProductsNamed,
+        thisMonthRevenue,
+        lastMonthRevenue,
+        monthChangePercent: monthChange, // e.g. "12.5" or "-8.3" or null
+        totalYearRevenue,
+        totalYearOrders,
+        avgOrderValue,
       },
+      monthlyBreakdown: months, // array of 12 months with revenue + orders
     });
   } catch (error) {
     res.status(500).json({
