@@ -16,11 +16,10 @@ import { generalLimiter } from "./middlewares/rateLimiter.js";
 dotenv.config({ path: "./.env" });
 const app = express();
 
-
 const allowedOrigins = [
   "http://localhost:5173",
-  "http://localhost:3000"
-  // deployed frontend 
+  "http://localhost:3000",
+  "https://shop-t9bd.onrender.com",
 ];
 
 app.use(
@@ -34,7 +33,7 @@ app.use(
     } else {
       callback(new Error("Not allowed by CORS"));
     }
-  })
+  }),
 );
 
 app.use(express.json());
