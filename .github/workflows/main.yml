@@ -45,5 +45,5 @@ jobs:
 
       - name: Deploy Backend to Render
         run: |
-          curl -X POST "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_URL }}" \
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" \
           -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}"
