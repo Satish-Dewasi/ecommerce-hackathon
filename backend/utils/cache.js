@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import logger from "./logger.js";
 import "dotenv/config";
 
-// Initialize Redis client with retry strategy and TLS - test
+// Initialize Redis client with retry strategy and TLS-----
 const redis = new Redis(process.env.REDIS_URL, {
   maxRetriesPerRequest: 1,
   retryStrategy: (times) => {
