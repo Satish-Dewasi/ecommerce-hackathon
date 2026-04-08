@@ -2,19 +2,9 @@ import Order from "../models/orderModel.js";
 import User from "../models/userModel.js";
 import Product from "../models/productModel.js";
 import mongoose from "mongoose";
+import logger from "../utils/logger.js";
 
-// ═══════════════════════════════════════════════════════════
 //  PLACE ORDER  —  POST /orders/checkout
-// ═══════════════════════════════════════════════════════════
-// Flow:
-//  1. Validate address exists in customer's saved addresses
-//  2. Resolve which cart items to checkout
-//  3. Fetch products + validate stock for every item
-//  4. Group items by seller → build sellerOrders[]
-//  5. Deduct stock atomically per variant
-//  6. Create the Order document
-//  7. Remove checked-out items from customer's cart
-
 export const placeOrder = async (req, res) => {
   // Start a session so stock deduction + order creation are atomic
   const session = await mongoose.startSession();
@@ -23,9 +13,6 @@ export const placeOrder = async (req, res) => {
   try {
     const customerId = req.user._id;
 
-    // ── 1. Body ───────────────────────────────────────────
-    // addressId  : required — must match a saved address _id
-    // cartItemIds: optional — if omitted, checkout entire cart
     const { addressId, cartItemIds } = req.body;
 
     if (!addressId) {
@@ -36,7 +23,7 @@ export const placeOrder = async (req, res) => {
         .json({ success: false, message: "addressId is required" });
     }
 
-    // ── 2. Fetch customer (need addresses + cart) ─────────
+    //Fetch customer (need addresses + cart)
     const customer = await User.findById(customerId).session(session);
 
     // Validate address
@@ -61,7 +48,7 @@ export const placeOrder = async (req, res) => {
       country: address.country,
     };
 
-    // ── 3. Resolve cart items to checkout ─────────────────
+    // Resolve cart items to checkout
     if (!customer.cart || customer.cart.length === 0) {
       await session.abortTransaction();
       session.endSession();
@@ -86,7 +73,7 @@ export const placeOrder = async (req, res) => {
         .json({ success: false, message: "No valid cart items to checkout" });
     }
 
-    // ── 4. Fetch all products in one query ────────────────
+    //Fetch all products in one query
     const productIds = [...new Set(cartToCheckout.map((i) => i.product))];
     const products = await Product.find({
       _id: { $in: productIds },
@@ -97,7 +84,7 @@ export const placeOrder = async (req, res) => {
       products.map((p) => [p._id.toString(), p]),
     );
 
-    // ── 5. Validate stock + build seller buckets ──────────
+    // Validate stock + build seller buckets
     const sellerBuckets = {}; // { sellerId: { seller, items[], subTotal } }
 
     for (const cartItem of cartToCheckout) {
@@ -163,7 +150,7 @@ export const placeOrder = async (req, res) => {
       sellerBuckets[sellerId].subTotal += itemTotal;
     }
 
-    // ── 6. Deduct stock atomically per variant ────────────
+    //Deduct stock atomically per variant
     for (const cartItem of cartToCheckout) {
       await Product.updateOne(
         {
@@ -177,7 +164,7 @@ export const placeOrder = async (req, res) => {
       );
     }
 
-    // ── 7. Build sellerOrders array ───────────────────────
+    // Build sellerOrders array
     const sellerOrders = Object.values(sellerBuckets).map((bucket) => ({
       seller: bucket.seller,
       items: bucket.items,
@@ -188,7 +175,7 @@ export const placeOrder = async (req, res) => {
 
     const grandTotal = sellerOrders.reduce((sum, so) => sum + so.subTotal, 0);
 
-    // ── 8. Create Order ───────────────────────────────────
+    // Create Order
     const [order] = await Order.create(
       [
         {
@@ -206,17 +193,20 @@ export const placeOrder = async (req, res) => {
       { session },
     );
 
-    // ── 9. Remove checked-out items from cart ─────────────
+    // Remove checked-out items from cart
     const checkedOutIds = new Set(cartToCheckout.map((i) => i._id.toString()));
     customer.cart = customer.cart.filter(
       (item) => !checkedOutIds.has(item._id.toString()),
     );
     await customer.save({ session, validateBeforeSave: false });
 
-    // ── Commit ────────────────────────────────────────────
+    // Commit
     await session.commitTransaction();
     session.endSession();
 
+    logger.logEvent("info", "Order placed successfully", {
+      orderId: order._id,
+    });
     res.status(201).json({
       success: true,
       message: "Order placed successfully",
@@ -225,6 +215,7 @@ export const placeOrder = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+    logger.logEvent("error", "Failed to place order", { error: error.message });
     res.status(500).json({
       success: false,
       message: "Failed to place order",
@@ -233,9 +224,7 @@ export const placeOrder = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
 //  GET MY ORDERS  —  GET /orders/my
-// ═══════════════════════════════════════════════════════════
 export const getMyOrders = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
@@ -272,9 +261,7 @@ export const getMyOrders = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
 //  GET ORDER DETAIL  —  GET /orders/my/:orderId
-// ═══════════════════════════════════════════════════════════
 export const getMyOrderById = async (req, res) => {
   try {
     const order = await Order.findOne({
@@ -305,12 +292,7 @@ export const getMyOrderById = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
 //  CANCEL ORDER  —  PATCH /orders/my/:orderId/cancel
-// ═══════════════════════════════════════════════════════════
-// Customer can cancel only if ALL seller slices are still
-// in "pending" or "confirmed" — once any slice is shipped, too late.
-
 export const cancelMyOrder = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -376,6 +358,9 @@ export const cancelMyOrder = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
+    logger.logEvent("info", "Order cancelled successfully", {
+      orderId: order._id,
+    });
     res.status(200).json({
       success: true,
       message: "Order cancelled successfully",

@@ -1,16 +1,20 @@
 import Product from "../models/productModel.js";
+import logger from "../utils/logger.js";
+import { getCache, setCache } from "../utils/cache.js";
 
 export const addProduct = async (req, res) => {
   try {
     const newProduct = new Product(req.body);
     const saved = await newProduct.save();
 
+    logger.logEvent("info", "Product added", { productId: saved._id });
     res.status(201).json({
       success: true,
       message: "New Product Saved Successfully",
       data: saved,
     });
   } catch (e) {
+    logger.logEvent("error", "Failed to add product", { error: e.message });
     res.status(500).json({
       success: false,
       message: "Server Error",
@@ -97,8 +101,20 @@ export const getAllProducts = async (req, res) => {
         sortOption.createdAt = -1;
     }
 
-    const products = await Product.find(query).sort(sortOption);
+    const cacheKey = "products:all";
 
+    // 1. Check cache first
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      logger.logEvent("info", "Products retrieved from cache", {
+        query: req.query,
+      });
+      return res
+        .status(200)
+        .json({ success: true, fromCache: true, data: cached });
+    }
+
+    const products = await Product.find(query).sort(sortOption);
     const total = await Product.countDocuments(query);
 
     // ===== MINIMAL CHANGE HERE =====
@@ -126,6 +142,13 @@ export const getAllProducts = async (req, res) => {
       };
     });
 
+    logger.logEvent("info", "Products retrieved", {
+      count: formattedProducts.length,
+      query: req.query,
+    });
+
+    await setCache(cacheKey, formattedProducts, 60 * 5); // Cache for 5 minutes
+
     res.status(200).json({
       success: true,
       total,
@@ -143,6 +166,14 @@ export const getAllProducts = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const { product_id } = req.params;
+    const cacheKey = `products:${id}`;
+
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return res
+        .status(200)
+        .json({ success: true, fromCache: true, data: cached });
+    }
     const productData = await Product.findById(product_id); // ← findById, not find
 
     if (!productData) {
@@ -151,7 +182,7 @@ export const getProductById = async (req, res) => {
         .json({ success: false, message: "Product not found" });
     }
 
-    const raw = productData.toObject(); // ← now works, single document
+    const raw = productData.toObject();
 
     const colorImages = {};
     raw.variants.forEach((v) => {
@@ -168,6 +199,8 @@ export const getProductById = async (req, res) => {
       variants: cleanVariants,
     };
 
+    logger.logEvent("info", "Product retrieved", { productId: product_id });
+    await setCache(cacheKey, transformed, 60 * 5);
     res.json({ success: true, count: 1, data: [transformed] });
   } catch (e) {
     res

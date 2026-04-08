@@ -1,10 +1,7 @@
 import Product from "../models/productModel.js";
 import Order from "../models/orderModel.js";
 import mongoose from "mongoose";
-
-// ═══════════════════════════════════════════════════════════
-//  HELPER
-// ═══════════════════════════════════════════════════════════
+import { invalidateCache } from "../utils/cache.js";
 
 // Confirm a product belongs to the requesting seller
 const assertOwnership = async (productId, sellerId) => {
@@ -17,11 +14,7 @@ const assertOwnership = async (productId, sellerId) => {
   return product;
 };
 
-// ═══════════════════════════════════════════════════════════
-//  PRODUCT MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
-// ── GET /seller/products ─────────────────────────────────
+// GET /seller/products
 // List all products owned by the logged-in seller
 export const getMyProducts = async (req, res) => {
   try {
@@ -68,7 +61,7 @@ export const getMyProducts = async (req, res) => {
   }
 };
 
-// ── GET /seller/products/:productId ─────────────────────
+// GET /seller/products/:productId
 // Get a single product — must be seller's own
 export const getMyProductById = async (req, res) => {
   try {
@@ -89,7 +82,7 @@ export const getMyProductById = async (req, res) => {
   }
 };
 
-// ── POST /seller/products ────────────────────────────────
+// POST /seller/products
 // Create a new product — seller is stamped from JWT
 export const createProduct = async (req, res) => {
   try {
@@ -119,9 +112,8 @@ export const createProduct = async (req, res) => {
   }
 };
 
-// ── PATCH /seller/products/:productId ───────────────────
+// PATCH /seller/products/:productId
 // Update top-level product fields (name, description, category, etc.)
-// Does NOT touch variants — use dedicated variant routes for that
 export const updateProduct = async (req, res) => {
   try {
     const product = await assertOwnership(req.params.productId, req.user._id);
@@ -138,6 +130,8 @@ export const updateProduct = async (req, res) => {
     Object.assign(product, safeUpdates);
     await product.save();
 
+    await invalidateCache(`products:${id}`, "products:all");
+
     res.status(200).json({
       success: true,
       message: "Product updated successfully",
@@ -152,8 +146,7 @@ export const updateProduct = async (req, res) => {
   }
 };
 
-// ── DELETE /seller/products/:productId ──────────────────
-// Soft delete — sets isDeleted: true
+//  DELETE /seller/products/:productId
 export const deleteProduct = async (req, res) => {
   try {
     const product = await assertOwnership(req.params.productId, req.user._id);
@@ -179,12 +172,7 @@ export const deleteProduct = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
-//  VARIANT MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
-// ── POST /seller/products/:productId/variants ────────────
-// Add a new variant to an existing product
+//  POST /seller/products/:productId/variants
 export const addVariant = async (req, res) => {
   try {
     const product = await assertOwnership(req.params.productId, req.user._id);
@@ -218,7 +206,7 @@ export const addVariant = async (req, res) => {
   }
 };
 
-// ── PATCH /seller/products/:productId/variants/:sku ─────
+//  PATCH /seller/products/:productId/variants/:sku
 // Update a specific variant (price, stock, color, size)
 export const updateVariant = async (req, res) => {
   try {
@@ -256,7 +244,7 @@ export const updateVariant = async (req, res) => {
   }
 };
 
-// ── DELETE /seller/products/:productId/variants/:sku ────
+//  DELETE /seller/products/:productId/variants/:sku
 // Remove a variant from a product
 export const deleteVariant = async (req, res) => {
   try {
@@ -292,13 +280,8 @@ export const deleteVariant = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
-//  ORDER MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-
 // ── GET /seller/orders ───────────────────────────────────
 // List all orders that contain this seller's products
-// Filters down to only the seller's own sellerOrder slice
 export const getMyOrders = async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
@@ -349,8 +332,8 @@ export const getMyOrders = async (req, res) => {
   }
 };
 
-// ── GET /seller/orders/:orderId ──────────────────────────
-// Get full detail of one order — only the seller's sellerOrder slice
+//  GET /seller/orders/:orderId
+// Get full detail of one order
 export const getMyOrderById = async (req, res) => {
   try {
     const sellerId = req.user._id;
@@ -393,10 +376,7 @@ export const getMyOrderById = async (req, res) => {
   }
 };
 
-// ── PATCH /seller/orders/:orderId/status ─────────────────
-// Update fulfillment status on this seller's sellerOrder slice
-// Valid transitions: pending → confirmed → shipped → delivered
-//                   any     → cancelled / returned
+//  PATCH /seller/orders/:orderId/status
 export const updateOrderStatus = async (req, res) => {
   try {
     const { status, note, trackingInfo } = req.body;
@@ -458,13 +438,7 @@ export const updateOrderStatus = async (req, res) => {
   }
 };
 
-// ═══════════════════════════════════════════════════════════
-//  SALES INSIGHTS
-// ═══════════════════════════════════════════════════════════
-
 // ── GET /seller/insights ─────────────────────────────────
-// Sales summary: revenue, units sold, order count, top products
-// Optional query params: from, to (ISO date strings)
 export const getSalesInsights = async (req, res) => {
   try {
     const sellerId = new mongoose.Types.ObjectId(req.user._id);

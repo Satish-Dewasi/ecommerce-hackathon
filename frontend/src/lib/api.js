@@ -1,4 +1,3 @@
-// ─── Base ─────────────────────────────────────────────────────────────────────
 const BASE = import.meta.env.VITE_API_BASE_URL;
 // const BASE = "http://localhost:5000/api";
 
@@ -7,11 +6,6 @@ export const getAccessToken = () => localStorage.getItem("accessToken");
 export const setAccessToken = (t) => localStorage.setItem("accessToken", t);
 export const clearAccessToken = () => localStorage.removeItem("accessToken");
 
-// ─── Core fetch wrapper ────────────────────────────────────────────────────────
-/**
- * Makes an authenticated (or public) request.
- * Automatically refreshes the access token on 401 and retries once.
- */
 async function request(path, options = {}, retry = true) {
   const token = getAccessToken();
 
@@ -58,8 +52,6 @@ export const api = {
   delete: (path) => request(path, { method: "DELETE" }),
 };
 
-// ─── Auth ──────────────────────────────────────────────────────────────────────
-// Backend mounts userRoutes at /api/v1/user → full paths: /v1/user/register etc.
 export const authApi = {
   register: (body) => api.post("/v1/register", body),
   login: (body) => api.post("/v1/login", body),
@@ -85,7 +77,6 @@ async function refreshToken() {
 }
 
 // ─── Products ──────────────────────────────────────────────────────────────────
-// Mounted at /api/v1 (no /user prefix) → /v1/products, /v1/products/:id
 export const productApi = {
   getAll: (params = {}) => {
     const qs = new URLSearchParams(

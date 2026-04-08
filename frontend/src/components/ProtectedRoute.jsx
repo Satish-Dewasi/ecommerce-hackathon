@@ -1,15 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 
-/**
- * Wraps a route and redirects if:
- * - Not logged in → /auth
- * - Logged in but wrong role → /
- *
- * Usage:
- *   <ProtectedRoute role="admin"><AdminDashboard /></ProtectedRoute>
- *   <ProtectedRoute role="seller"><SellerDashboard /></ProtectedRoute>
- */
 const ProtectedRoute = ({ children, role }) => {
   const { user, loading } = useAuth();
 

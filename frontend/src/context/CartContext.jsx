@@ -10,9 +10,6 @@ import { useAuth } from "@/context/AuthContext";
 
 const CartContext = createContext(undefined);
 
-// ── Helper: map one backend cart entry → local item shape ─────────────────────
-// Backend cart entry shape:
-// { _id, product: { _id, name, images, basePrice, salePrice, variants[] }, variantSku, quantity }
 const mapEntry = (entry) => {
   const product = entry.product || {};
   const variants = product.variants || [];
