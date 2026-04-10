@@ -27,6 +27,7 @@ import {
   getAllUserController,
   banUserController,
   deleteUserController,
+  updateUserRoleController,
 } from "../controllers/userController.js";
 import { isAuthenticated, authorizeRoles } from "../middlewares/auth.js";
 import { authLimiter } from "../middlewares/rateLimiter.js";
@@ -75,5 +76,9 @@ router
 router
   .route("/admin/users/:id")
   .delete(isAuthenticated, authorizeRoles("admin"), deleteUserController);
+
+router
+  .route("/admin/users/:userId/role")
+  .put(isAuthenticated, authorizeRoles("admin"), updateUserRoleController);
 
 export default router;

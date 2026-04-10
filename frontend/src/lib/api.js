@@ -57,6 +57,9 @@ export const authApi = {
   login: (body) => api.post("/v1/login", body),
   logout: () => api.post("/v1/logout", {}),
   getMe: () => api.get("/v1/me"),
+  updateProfile: (body) => api.put("/v1/me/update", body),
+  updateUserRole: (userId, role) =>
+    api.put(`/v1/admin/users/${userId}/role`, { role }),
 };
 
 async function refreshToken() {

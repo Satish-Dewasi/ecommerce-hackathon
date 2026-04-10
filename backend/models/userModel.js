@@ -33,7 +33,7 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
-    phone: { type: String, unique: true, sparse: true }, // sparse: unique only when field exists
+    phone: { type: String, unique: true, sparse: true },
     avatar: { type: String }, // profile picture URL
     dateOfBirth: { type: Date },
     gender: { type: String, enum: ["male", "female", "other", "prefer_not"] },
@@ -43,7 +43,6 @@ const userSchema = new mongoose.Schema(
       minLength: [6, "Password must have at least 6 characters"],
       select: false,
     },
-    googleId: { type: String },
 
     isEmailVerified: { type: Boolean, default: false },
     isPhoneVerified: { type: Boolean, default: false },
@@ -73,7 +72,7 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: { type: Date },
     lastLoginIp: { type: String },
 
-    addresses: [addressSchema], // user can save multiple addresses
+    addresses: [addressSchema],
 
     wishlist: [
       {
@@ -116,7 +115,7 @@ const userSchema = new mongoose.Schema(
     // ── 11. Soft Delete ───────────────────
     deletedAt: { type: Date, default: null }, // null = not deleted
   },
-  { timestamps: true, validateBeforeSave: false }, // auto createdAt + updatedAt
+  { timestamps: true }, // auto createdAt + updatedAt
 );
 
 userSchema.pre("save", async function () {
