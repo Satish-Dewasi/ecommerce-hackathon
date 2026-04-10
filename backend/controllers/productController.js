@@ -65,21 +65,11 @@ export const getAllProducts = async (req, res) => {
     }
 
     if (size || color || inStock) {
-      query.variants = {
-        $elemMatch: {},
-      };
+      query.variants = { $elemMatch: {} };
 
-      if (size) {
-        query.variants.$elemMatch.size = size;
-      }
-
-      if (color) {
-        query.variants.$elemMatch.color = color;
-      }
-
-      if (inStock === "true") {
-        query.variants.$elemMatch.stock = { $gt: 0 };
-      }
+      if (size) query.variants.$elemMatch.size = size;
+      if (color) query.variants.$elemMatch.color = color;
+      if (inStock === "true") query.variants.$elemMatch.stock = { $gt: 0 };
     }
 
     let sortOption = {};
@@ -101,12 +91,19 @@ export const getAllProducts = async (req, res) => {
         sortOption.createdAt = -1;
     }
 
-    const cacheKey = "products:all";
+    // Dynamic cache key built from all active query params
+    const queryKey = Object.keys(req.query)
+      .sort()
+      .filter((k) => req.query[k] !== undefined)
+      .map((k) => `${k}=${req.query[k]}`)
+      .join("&");
 
-    // 1. Check cache first
+    const cacheKey = `products:${queryKey || "default"}`;
+
     const cached = await getCache(cacheKey);
     if (cached) {
       logger.logEvent("info", "Products retrieved from cache", {
+        cacheKey,
         query: req.query,
       });
       return res
@@ -114,10 +111,15 @@ export const getAllProducts = async (req, res) => {
         .json({ success: true, fromCache: true, data: cached });
     }
 
-    const products = await Product.find(query).sort(sortOption);
-    const total = await Product.countDocuments(query);
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
 
-    // ===== MINIMAL CHANGE HERE =====
+    const [products, total] = await Promise.all([
+      Product.find(query).sort(sortOption).skip(skip).limit(limitNum),
+      Product.countDocuments(query),
+    ]);
+
     const formattedProducts = products.map((product) => {
       const variantWithImage = product.variants.find(
         (v) => v.images && v.images.length > 0,
@@ -144,14 +146,18 @@ export const getAllProducts = async (req, res) => {
 
     logger.logEvent("info", "Products retrieved", {
       count: formattedProducts.length,
+      total,
+      cacheKey,
       query: req.query,
     });
 
-    await setCache(cacheKey, formattedProducts, 60 * 5); // Cache for 5 minutes
+    await setCache(cacheKey, formattedProducts, 60 * 5);
 
     res.status(200).json({
       success: true,
       total,
+      page: pageNum,
+      pages: Math.ceil(total / limitNum),
       data: formattedProducts,
     });
   } catch (e) {
@@ -166,15 +172,16 @@ export const getAllProducts = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const { product_id } = req.params;
-    const cacheKey = `products:${id}`;
+    const cacheKey = `products:${product_id}`;
 
     const cached = await getCache(cacheKey);
     if (cached) {
       return res
         .status(200)
-        .json({ success: true, fromCache: true, data: cached });
+        .json({ success: true, fromCache: true, data: [cached] }); // ← wrap in array
     }
-    const productData = await Product.findById(product_id); // ← findById, not find
+
+    const productData = await Product.findById(product_id);
 
     if (!productData) {
       return res
@@ -203,9 +210,8 @@ export const getProductById = async (req, res) => {
     await setCache(cacheKey, transformed, 60 * 5);
     res.json({ success: true, count: 1, data: [transformed] });
   } catch (e) {
-    res
-      .status(500)
-      .json({ success: false, message: "Server Error", error: e.message });
+    console.error(e);
+    res.status(500).json({ success: false, message: "Server Error", error: e });
   }
 };
 

@@ -5,6 +5,7 @@ import { generateAccessAndRefreshToken } from "../utils/generateAccessAndRefresh
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
+import { invalidateCache } from "../utils/cache.js";
 
 // ─────────────────────────────────────────
 //  Register User
@@ -92,7 +93,7 @@ export const loginController = catchAsyncErrors(async (req, res, next) => {
     secure: true,
     sameSite: "None",
   };
-
+  await invalidateCache("products:all");
   logger.logEvent("info", "User logged in", {
     userId: user._id,
     role: user.role,
@@ -487,3 +488,33 @@ export const deleteUserController = catchAsyncErrors(async (req, res, next) => {
     message: "User deleted successfully",
   });
 });
+
+export const updateUserRoleController = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    const validRoles = ["customer", "seller", "admin", "sub_admin"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({ success: false, message: "Invalid role" });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { role },
+      { new: true, select: "-password -refreshToken" },
+    );
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({ success: true, data: user });
+  } catch (e) {
+    res
+      .status(500)
+      .json({ success: false, message: "Server Error", error: e.message });
+  }
+};

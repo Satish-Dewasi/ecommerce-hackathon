@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
+import { authApi } from "../lib/api";
 
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
 const NAV = [
@@ -182,15 +183,10 @@ const AdminDashboard = () => {
   const handleRoleChange = async (userId, newRole) => {
     setRoleDropdown(null);
     try {
-      // Role change via profile update — uses PUT /me/update but for admin
-      // Since the API doesn't have a dedicated role-change endpoint, we call
-      // a direct DB update through the ban endpoint workaround or just optimistic UI
-      // NOTE: Tell backend teammate to add PUT /admin/users/:id/role
-      // For now we update locally and show a note
+      await authApi.updateUserRole(userId, newRole); // ← correct call
       setUsers((prev) =>
         prev.map((u) => (u._id === userId ? { ...u, role: newRole } : u)),
       );
-      // TODO: await api.put(`/v1/user/admin/users/${userId}/role`, { role: newRole });
     } catch (err) {
       setError(err.message);
     }
