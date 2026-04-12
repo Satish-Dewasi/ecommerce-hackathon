@@ -1,5 +1,5 @@
-// const BASE = import.meta.env.VITE_API_BASE_URL;
-const BASE = "http://localhost:5000/api";
+const BASE = import.meta.env.VITE_API_BASE_URL;
+// const BASE = "http://localhost:5000/api";
 
 // ─── Token helpers ─────────────────────────────────────────────────────────────
 export const getAccessToken = () => localStorage.getItem("accessToken");
