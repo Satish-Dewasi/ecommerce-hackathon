@@ -94,7 +94,7 @@ const paymentSchema = new mongoose.Schema(
   {
     method: {
       type: String,
-      enum: ["cod", "online", "upi"],
+      enum: ["cod", "razorpay", "upi"],
       required: true,
     },
     status: {
@@ -145,6 +145,16 @@ const orderSchema = new mongoose.Schema(
     grandTotal: {
       type: Number,
       required: true,
+    },
+
+    shippingMethod: {
+      type: String,
+      enum: ["standard", "express", "next_day"],
+      default: "standard",
+    },
+    shippingCost: {
+      type: Number,
+      default: 99,
     },
 
     payment: {

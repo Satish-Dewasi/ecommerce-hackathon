@@ -11,7 +11,7 @@ import { invalidateCache } from "../utils/cache.js";
 //  Register User
 // ─────────────────────────────────────────
 export const registerController = catchAsyncErrors(async (req, res, next) => {
-  const { name, email, password, phone } = req.body;
+  const { name, email, password, phone, role } = req.body;
 
   // Check if email already exists
   const existingUser = await User.findOne({ email });
@@ -24,6 +24,7 @@ export const registerController = catchAsyncErrors(async (req, res, next) => {
     email,
     password,
     phone: phone || undefined,
+    role: role || "customer", // ← add this
   });
 
   logger.logEvent("info", "User registered", { userId: user._id });

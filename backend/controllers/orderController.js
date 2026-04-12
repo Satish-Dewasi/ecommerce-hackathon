@@ -3,17 +3,15 @@ import User from "../models/userModel.js";
 import Product from "../models/productModel.js";
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
+import { buildAndPlaceOrder } from "../utils/buildAndPlaceOrder.js";
 
 //  PLACE ORDER  —  POST /orders/checkout
 export const placeOrder = async (req, res) => {
-  // Start a session so stock deduction + order creation are atomic
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const customerId = req.user._id;
-
-    const { addressId, cartItemIds } = req.body;
+    const { addressId, shippingMethod = "standard" } = req.body;
 
     if (!addressId) {
       await session.abortTransaction();
@@ -23,203 +21,33 @@ export const placeOrder = async (req, res) => {
         .json({ success: false, message: "addressId is required" });
     }
 
-    //Fetch customer (need addresses + cart)
-    const customer = await User.findById(customerId).session(session);
+    const order = await buildAndPlaceOrder({
+      customerId: req.user._id,
+      addressId,
+      shippingMethod,
+      paymentData: { method: "cod", status: "pending" },
+      session,
+    });
 
-    // Validate address
-    const address = customer.addresses.id(addressId);
-    if (!address) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "Address not found. Please add a valid saved address.",
-      });
-    }
-
-    // Snapshot address (cart may change later, order must stay accurate)
-    const shippingAddress = {
-      fullName: address.fullName || customer.name,
-      phone: address.phone || customer.phone,
-      street: address.line1 + (address.line2 ? `, ${address.line2}` : ""),
-      city: address.city,
-      state: address.state,
-      pincode: address.pincode,
-      country: address.country,
-    };
-
-    // Resolve cart items to checkout
-    if (!customer.cart || customer.cart.length === 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res
-        .status(400)
-        .json({ success: false, message: "Your cart is empty" });
-    }
-
-    // If specific cartItemIds provided, filter to those only
-    const cartToCheckout =
-      cartItemIds && cartItemIds.length > 0
-        ? customer.cart.filter((item) =>
-            cartItemIds.includes(item._id.toString()),
-          )
-        : customer.cart;
-
-    if (cartToCheckout.length === 0) {
-      await session.abortTransaction();
-      session.endSession();
-      return res
-        .status(400)
-        .json({ success: false, message: "No valid cart items to checkout" });
-    }
-
-    //Fetch all products in one query
-    const productIds = [...new Set(cartToCheckout.map((i) => i.product))];
-    const products = await Product.find({
-      _id: { $in: productIds },
-      isDeleted: { $ne: true },
-    }).session(session);
-
-    const productMap = Object.fromEntries(
-      products.map((p) => [p._id.toString(), p]),
-    );
-
-    // Validate stock + build seller buckets
-    const sellerBuckets = {}; // { sellerId: { seller, items[], subTotal } }
-
-    for (const cartItem of cartToCheckout) {
-      const product = productMap[cartItem.product.toString()];
-
-      if (!product) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(404).json({
-          success: false,
-          message: `Product not found for cart item`,
-        });
-      }
-
-      // Find the exact variant by SKU
-      const variant = product.variants.find(
-        (v) => v.sku === cartItem.variantSku,
-      );
-      if (!variant) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(404).json({
-          success: false,
-          message: `Variant '${cartItem.variantSku}' not found in product '${product.name}'`,
-        });
-      }
-
-      // Stock check
-      if (variant.stock < cartItem.quantity) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({
-          success: false,
-          message: `Insufficient stock for '${product.name}' (${variant.color} / ${variant.size}). Available: ${variant.stock}, Requested: ${cartItem.quantity}`,
-        });
-      }
-
-      const sellerId = product.seller.toString();
-      const price = variant.price ?? product.salePrice ?? product.basePrice;
-      const itemTotal = price * cartItem.quantity;
-
-      // Group by seller
-      if (!sellerBuckets[sellerId]) {
-        sellerBuckets[sellerId] = {
-          seller: product.seller,
-          items: [],
-          subTotal: 0,
-        };
-      }
-
-      sellerBuckets[sellerId].items.push({
-        product: product._id,
-        variantSnapshot: {
-          sku: variant.sku,
-          color: variant.color,
-          size: variant.size,
-          price,
-        },
-        quantity: cartItem.quantity,
-        itemTotal,
-      });
-
-      sellerBuckets[sellerId].subTotal += itemTotal;
-    }
-
-    //Deduct stock atomically per variant
-    for (const cartItem of cartToCheckout) {
-      await Product.updateOne(
-        {
-          _id: cartItem.product,
-          "variants.sku": cartItem.variantSku,
-        },
-        {
-          $inc: { "variants.$.stock": -cartItem.quantity },
-        },
-        { session },
-      );
-    }
-
-    // Build sellerOrders array
-    const sellerOrders = Object.values(sellerBuckets).map((bucket) => ({
-      seller: bucket.seller,
-      items: bucket.items,
-      subTotal: bucket.subTotal,
-      status: "pending",
-      statusHistory: [{ status: "pending", note: "Order placed" }],
-    }));
-
-    const grandTotal = sellerOrders.reduce((sum, so) => sum + so.subTotal, 0);
-
-    // Create Order
-    const [order] = await Order.create(
-      [
-        {
-          customer: customerId,
-          shippingAddress,
-          sellerOrders,
-          grandTotal,
-          payment: {
-            method: "cod",
-            status: "pending",
-          },
-          overallStatus: "pending",
-        },
-      ],
-      { session },
-    );
-
-    // Remove checked-out items from cart
-    const checkedOutIds = new Set(cartToCheckout.map((i) => i._id.toString()));
-    customer.cart = customer.cart.filter(
-      (item) => !checkedOutIds.has(item._id.toString()),
-    );
-    await customer.save({ session, validateBeforeSave: false });
-
-    // Commit
     await session.commitTransaction();
     session.endSession();
 
-    logger.logEvent("info", "Order placed successfully", {
+    logger.logEvent("info", "COD order placed successfully", {
       orderId: order._id,
     });
-    res.status(201).json({
-      success: true,
-      message: "Order placed successfully",
-      order,
-    });
-  } catch (error) {
+    res
+      .status(201)
+      .json({ success: true, message: "Order placed successfully", order });
+  } catch (err) {
     await session.abortTransaction();
     session.endSession();
-    logger.logEvent("error", "Failed to place order", { error: error.message });
-    res.status(500).json({
+    logger.logEvent("error", "Failed to place COD order", {
+      error: err.message,
+    });
+    const status = err.status || 500;
+    res.status(status).json({
       success: false,
-      message: "Failed to place order",
-      error: error.message,
+      message: err.message || "Failed to place order",
     });
   }
 };

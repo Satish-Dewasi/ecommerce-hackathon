@@ -13,6 +13,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Play } from "lucide-react";
 import { Link } from "react-router-dom";
 import { orderApi, addressApi } from "@/lib/api";
+import { paymentApi } from "@/lib/api";
 
 const STEPS = [
   { label: "Information", icon: Package },
@@ -139,23 +140,99 @@ const Checkout = () => {
     }
   };
 
-  // ── Place order ───────────────────────────────────────────────────────────
+  // Helper: loads Razorpay checkout script once
+  const loadRazorpayScript = () =>
+    new Promise((resolve) => {
+      if (document.getElementById("razorpay-script")) return resolve(true);
+      const script = document.createElement("script");
+      script.id = "razorpay-script";
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+
   const handlePlaceOrder = async () => {
     setLoading(true);
     try {
-      await orderApi.checkout({
+      // ── COD: existing flow ──────────────────────────────────────────────────
+      if (payment.method === "cod") {
+        await orderApi.checkout({
+          addressId: savedAddressId,
+          shippingMethod: shipping_method,
+        });
+        await clearCart();
+        setPlaced(true);
+        return;
+      }
+
+      // ── Card / UPI: Razorpay flow ───────────────────────────────────────────
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        alert("Failed to load payment gateway. Check your connection.");
+        return;
+      }
+
+      // Step 1: Create Razorpay order on backend (amount computed server-side)
+      const data = await paymentApi.createOrder({
         addressId: savedAddressId,
-        paymentMethod: payment.method,
+        shippingMethod: shipping_method,
       });
-      await clearCart();
-      setPlaced(true);
+
+      // Step 2: Open Razorpay modal
+      await new Promise((resolve, reject) => {
+        const options = {
+          key: data.key,
+          amount: data.amount,
+          currency: data.currency,
+          order_id: data.razorpayOrderId,
+          name: "Your Store",
+          description: "Order Payment",
+          prefill: {
+            name: `${info.firstName} ${info.lastName}`,
+            email: info.email,
+            contact: info.phone,
+          },
+          theme: { color: "#000000" },
+          method:
+            payment.method === "upi"
+              ? { upi: true, card: false, netbanking: false, wallet: false }
+              : payment.method === "card"
+                ? { card: true, upi: false, netbanking: false, wallet: false }
+                : undefined,
+          handler: async (response) => {
+            try {
+              // Step 3: Verify signature + place order on backend
+              await paymentApi.verify({
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+                addressId: savedAddressId,
+                shippingMethod: shipping_method,
+              });
+              await clearCart();
+              setPlaced(true);
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          },
+          modal: {
+            ondismiss: () => reject(new Error("Payment cancelled")),
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      });
     } catch (err) {
-      alert(err.message || "Failed to place order. Please try again.");
+      if (err.message !== "Payment cancelled") {
+        alert(err.message || "Payment failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
   };
-
   // ── Order Placed screen ────────────────────────────────────────────────────
   if (placed)
     return (
@@ -442,7 +519,7 @@ const Checkout = () => {
                 <div className="flex gap-2 p-1 bg-secondary/40 rounded-lg mb-6">
                   {[
                     { id: "card", label: "Card" },
-                    { id: "upi", label: "UPI" },
+                    { id: "upi", label: "Netbanking & Wallet" },
                     { id: "cod", label: "COD" },
                   ].map((m) => (
                     <button
@@ -464,7 +541,7 @@ const Checkout = () => {
                 {/* Card fields */}
                 {payment.method === "card" && (
                   <div className="space-y-3">
-                    <input
+                    {/* <input
                       placeholder="Cardholder Name"
                       value={payment.name}
                       onChange={setP("name")}
@@ -496,14 +573,14 @@ const Checkout = () => {
                     <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                       <span className="w-3 h-3 rounded-full bg-green-500 inline-block" />
                       Secure SSL encrypted payment
-                    </p>
+                    </p> */}
                   </div>
                 )}
 
                 {/* UPI */}
                 {payment.method === "upi" && (
                   <div>
-                    <input
+                    {/* <input
                       placeholder="Enter UPI ID (e.g. name@upi)"
                       value={payment.upi}
                       onChange={setP("upi")}
@@ -511,7 +588,7 @@ const Checkout = () => {
                     />
                     <p className="text-xs text-muted-foreground mt-2">
                       A payment request will be sent to your UPI app.
-                    </p>
+                    </p> */}
                   </div>
                 )}
 
