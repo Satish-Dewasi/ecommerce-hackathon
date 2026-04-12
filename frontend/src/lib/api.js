@@ -1,5 +1,5 @@
-const BASE = import.meta.env.VITE_API_BASE_URL;
-// const BASE = "http://localhost:5000/api";
+// const BASE = import.meta.env.VITE_API_BASE_URL;
+const BASE = "http://localhost:5000/api";
 
 // ─── Token helpers ─────────────────────────────────────────────────────────────
 export const getAccessToken = () => localStorage.getItem("accessToken");
@@ -172,4 +172,9 @@ export const addressApi = {
   add: (body) => api.post("/v1/me/address", body),
   update: (addressId, body) => api.put(`/v1/me/address/${addressId}`, body),
   remove: (addressId) => api.delete(`/v1/me/address/${addressId}`),
+};
+
+export const paymentApi = {
+  createOrder: (body) => api.post("/v1/payment/create-order", body),
+  verify: (body) => api.post("/v1/payment/verify", body),
 };

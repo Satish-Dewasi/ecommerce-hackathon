@@ -65,18 +65,13 @@ const StatusBadge = ({ status }) => {
 
 // ─── Order card ───────────────────────────────────────────────────────────────
 const OrderCard = ({ order }) => {
-  const navigate = useNavigate();
+  const [expanded, setExpanded] = useState(false);
 
-  // Flatten all items across all sellerOrders into one list
   const allItems = order.sellerOrders?.flatMap((so) => so.items) || [];
-
-  // Total item count
   const itemCount = allItems.reduce(
     (sum, item) => sum + (item.quantity || 1),
     0,
   );
-
-  // Shipping city for display
   const city = order.shippingAddress?.city || "";
 
   return (
@@ -124,7 +119,7 @@ const OrderCard = ({ order }) => {
         <StatusBadge status={order.overallStatus} />
       </div>
 
-      {/* Items — iterate over sellerOrders → items */}
+      {/* Items */}
       {order.sellerOrders?.map((sellerOrder) =>
         sellerOrder.items.map((item, i) => {
           const v = item.variantSnapshot || {};
@@ -133,7 +128,6 @@ const OrderCard = ({ order }) => {
               key={`${sellerOrder._id}-${i}`}
               className="flex items-center gap-4 px-5 py-4 border-b border-foreground/5 last:border-0"
             >
-              {/* Image — product is null in your current data, show placeholder */}
               <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/30 shrink-0">
                 {item.product?.image ? (
                   <img
@@ -151,8 +145,6 @@ const OrderCard = ({ order }) => {
                   </div>
                 )}
               </div>
-
-              {/* Info */}
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold truncate">
                   {item.product?.name || "Product"}
@@ -165,8 +157,6 @@ const OrderCard = ({ order }) => {
                   Qty: {item.quantity}
                 </p>
               </div>
-
-              {/* Price */}
               <p className="text-sm font-black shrink-0">
                 ₹{(item.itemTotal ?? v.price * item.quantity)?.toLocaleString()}
               </p>
@@ -182,16 +172,180 @@ const OrderCard = ({ order }) => {
           {city && ` · Delivering to ${city}`}
         </p>
         <button
-          onClick={() => navigate(`/orders/${order._id}`)}
+          onClick={() => setExpanded((p) => !p)}
           className="flex items-center gap-1 text-xs font-bold hover:opacity-70 transition-opacity"
         >
-          View Details <ChevronRight className="w-3.5 h-3.5" />
+          {expanded ? "Hide Details" : "View Details"}
+          <ChevronRight
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+          />
         </button>
       </div>
+
+      {/* ── Expanded detail panel ─────────────────────────────────────────── */}
+      {expanded && (
+        <div className="border-t border-foreground/10 bg-background divide-y divide-foreground/5">
+          {/* Shipping address */}
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+              Shipping Address
+            </p>
+            <p className="text-sm font-bold">
+              {order.shippingAddress?.fullName}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {order.shippingAddress?.phone}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {order.shippingAddress?.street}, {order.shippingAddress?.city},{" "}
+              {order.shippingAddress?.state} – {order.shippingAddress?.pincode}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {order.shippingAddress?.country}
+            </p>
+          </div>
+
+          {/* Shipping method + cost */}
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                Shipping Method
+              </p>
+              <p className="text-sm capitalize">
+                {order.shippingMethod?.replace("_", " ") || "Standard"}
+              </p>
+            </div>
+            <p className="text-sm font-bold">₹{order.shippingCost ?? 99}</p>
+          </div>
+
+          {/* Per-seller fulfillment status */}
+          {order.sellerOrders?.length > 1 && (
+            <div className="px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                Seller Fulfilment
+              </p>
+              <div className="space-y-2">
+                {order.sellerOrders.map((so) => (
+                  <div
+                    key={so._id}
+                    className="flex items-center justify-between"
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      {so.items.length} item{so.items.length !== 1 ? "s" : ""} ·{" "}
+                      ₹{so.subTotal?.toLocaleString()}
+                    </p>
+                    <StatusBadge status={so.status} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tracking info (shown only if any seller has it) */}
+          {order.sellerOrders?.some(
+            (so) => so.trackingInfo?.trackingNumber,
+          ) && (
+            <div className="px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
+                Tracking
+              </p>
+              {order.sellerOrders
+                .filter((so) => so.trackingInfo?.trackingNumber)
+                .map((so) => (
+                  <div
+                    key={so._id}
+                    className="text-xs text-muted-foreground space-y-0.5"
+                  >
+                    <p>
+                      <span className="font-bold text-foreground">
+                        {so.trackingInfo.courier}
+                      </span>
+                    </p>
+                    <p>Tracking #: {so.trackingInfo.trackingNumber}</p>
+                    {so.trackingInfo.estimatedDelivery && (
+                      <p>
+                        Est. Delivery:{" "}
+                        {new Date(
+                          so.trackingInfo.estimatedDelivery,
+                        ).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </p>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+
+          {/* Payment breakdown */}
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">
+              Price Breakdown
+            </p>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Items subtotal</span>
+                <span>
+                  ₹
+                  {(
+                    (order.grandTotal ?? 0) - (order.shippingCost ?? 99)
+                  ).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Shipping</span>
+                <span>₹{order.shippingCost ?? 99}</span>
+              </div>
+              <div className="flex justify-between font-black border-t border-foreground/10 pt-2 mt-2">
+                <span>Grand Total</span>
+                <span>₹{order.grandTotal?.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment info */}
+          <div className="px-5 py-4">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+              Payment Info
+            </p>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>
+                Method:{" "}
+                <span className="text-foreground font-bold uppercase">
+                  {order.payment?.method}
+                </span>
+              </p>
+              <p>
+                Status:{" "}
+                <span
+                  className={`font-bold ${order.payment?.status === "paid" ? "text-green-500" : "text-amber-500"}`}
+                >
+                  {order.payment?.status}
+                </span>
+              </p>
+              {order.payment?.gatewayPaymentId && (
+                <p>
+                  Payment ID:{" "}
+                  <span className="font-mono text-foreground">
+                    {order.payment.gatewayPaymentId}
+                  </span>
+                </p>
+              )}
+              {order.payment?.paidAt && (
+                <p>
+                  Paid At:{" "}
+                  {new Date(order.payment.paidAt).toLocaleString("en-IN")}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 const Orders = () => {
   const { user } = useAuth();

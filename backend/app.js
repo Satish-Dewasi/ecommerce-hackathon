@@ -12,6 +12,7 @@ import { connectDatabase } from "./config/db.js";
 import requestLogger from "./middlewares/requestLogger.js";
 import logger from "./utils/logger.js";
 import { generalLimiter } from "./middlewares/rateLimiter.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 dotenv.config({ path: "./.env" });
 const app = express();
@@ -50,6 +51,7 @@ app.use("/api/v1", productRoutes);
 app.use("/api/v1", userRoutes);
 app.use("/api/v1/seller", sellerRoutes);
 app.use("/api/v1/orders", orderRoutes);
+app.use("/api/v1", paymentRoutes);
 
 const PORT = process.env.PORT || 5000;
 //  error middleware
