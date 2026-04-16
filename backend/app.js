@@ -53,6 +53,11 @@ app.use("/api/v1/seller", sellerRoutes);
 app.use("/api/v1/orders", orderRoutes);
 app.use("/api/v1", paymentRoutes);
 
+// Lodder 
+app.get('/loaderio-0cfc5074fe6adddbe1c5ea1c14760024.txt', (req, res) => {
+  res.send('loaderio-0cfc5074fe6adddbe1c5ea1c14760024');
+});
+
 const PORT = process.env.PORT || 5000;
 //  error middleware
 app.use(errorMiddlware);
